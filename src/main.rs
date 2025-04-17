@@ -20,7 +20,7 @@ struct Args {
     #[clap(short, long, default_value = "./output")]
     output_dir: String,
 
-    #[clap(short, long, default_value = "1")]
+    #[clap(short, long, default_value = "6")]
     speed: u8,
 
     #[clap(short, long, default_value = "85")]
@@ -76,11 +76,8 @@ fn main() {
                 pb.inc(1);
             }
             None => {
-                pb.println(format!(
-                    "Image {} already exists in output directory: {}",
-                    img_path.display(),
-                    output_dir.display()
-                ));
+                pb.set_message(format!("Image {} already exists", img_path.display()));
+                pb.inc(1);
             }
         }
     });
