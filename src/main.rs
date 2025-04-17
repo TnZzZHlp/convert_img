@@ -1,5 +1,5 @@
 use clap::Parser;
-use image_hasher::{HashAlg, Hasher, HasherConfig};
+use image_hasher::{HashAlg, Hasher, HasherConfig, ImageHash};
 use img2avif::img2avif;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use rayon::prelude::*;
@@ -49,21 +49,24 @@ fn main() {
         let img_path = Path::new(img_path);
 
         // 找到相同的图片
-        match compare_hash_with_dir(&img_path, &output_dir) {
-            Ok(hash) => {
+        match compare_hash(&img_path, &output_dir) {
+            Some(hash) => {
                 // 转换图片格式
                 let file = File::open(img_path).unwrap();
-                let img = img2avif(file, Some(1), Some(70)).unwrap();
+                let img = img2avif(file, Some(5), Some(85)).unwrap();
 
-                let output_path = output_dir.join(format!("{}.avif", hash));
+                let output_path = output_dir.join(format!("{}.avif", uuid::Uuid::new_v4()));
                 std::fs::write(output_path, img).unwrap();
+                // 保存哈希值
+                let hash_file_path = output_dir.join("hashes");
+                std::fs::write(hash_file_path, format!("{}\n", hash)).unwrap();
                 pb.inc(1);
             }
-            Err(path) => {
+            None => {
                 pb.println(format!(
                     "Image {} already exists in output directory: {}",
                     img_path.display(),
-                    path
+                    output_dir.display()
                 ));
             }
         }
@@ -90,30 +93,28 @@ fn find_all_img_recusive<P: AsRef<Path>>(path: P) -> Vec<String> {
     images
 }
 
-// 获取目标文件夹内所有文件名，然后与传入的Hash值进行对比
-// 如果相同则返回False
-// 如果不同则返回True
-fn compare_hash_with_dir<P: AsRef<Path>>(img_path: P, output_dir: P) -> Result<String, String> {
+// 获取目标文件夹hashes文件内保存的哈希值，然后与传入的Hash值进行对比
+fn compare_hash<P: AsRef<Path>>(img_path: P, output_dir: P) -> Option<String> {
     let img = image::open(img_path).unwrap();
     let hasher = HASHER.get().unwrap();
     let origin_hash = hasher.hash_image(&img);
 
-    if let Ok(entries) = read_dir(output_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(file_name) = path.file_name() {
-                    let target_hash: image_hasher::ImageHash<_> =
-                        image_hasher::ImageHash::from_base64(file_name.to_str().unwrap()).unwrap();
+    // 从文件读取哈希值
+    let hash_file_path = output_dir.as_ref().join("hashes");
 
-                    if origin_hash.dist(&target_hash) < 10 {
-                        return Err(path.to_str().unwrap().to_string());
-                    }
-                }
-            }
+    let hashes = std::fs::read_to_string(hash_file_path).unwrap_or_default();
+    let mut hash_vec = Vec::new();
+    for line in hashes.lines() {
+        hash_vec.push(ImageHash::from_base64(line).unwrap());
+    }
+
+    for hash in hash_vec {
+        if hash.dist(&origin_hash) < 10 {
+            return None;
         }
     }
-    Ok(origin_hash.to_base64())
+
+    Some(origin_hash.to_base64())
 }
 
 fn init_pb(len: usize) -> ProgressBar {
