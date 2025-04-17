@@ -122,7 +122,6 @@ fn compare_hash<P: AsRef<Path>>(img_path: P, output_dir: P) -> Option<String> {
     }
 
     for hash in hash_vec {
-        println!("{}", hash.dist(&origin_hash));
         if hash.dist(&origin_hash) < 10 {
             return None;
         }
