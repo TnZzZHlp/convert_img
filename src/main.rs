@@ -76,7 +76,7 @@ fn main() {
                 pb.inc(1);
             }
             None => {
-                pb.set_message(format!("Image {} already exists", img_path.display()));
+                pb.println(format!("Image {} already exists", img_path.display()));
                 pb.inc(1);
             }
         }
