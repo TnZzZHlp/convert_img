@@ -3,6 +3,7 @@ use image_hasher::{HashAlg, Hasher, HasherConfig, ImageHash};
 use img2avif::img2avif;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use rayon::prelude::*;
+use std::io::Write;
 use std::{
     fmt,
     fs::{File, read_dir},
@@ -18,6 +19,12 @@ struct Args {
 
     #[clap(short, long, default_value = "./output")]
     output_dir: String,
+
+    #[clap(short, long, default_value = "1")]
+    speed: u8,
+
+    #[clap(short, long, default_value = "85")]
+    quality: u8,
 }
 
 static IMAGE_FORMATS: [&str; 3] = ["jpg", "png", "jpeg"];
@@ -53,13 +60,19 @@ fn main() {
             Some(hash) => {
                 // 转换图片格式
                 let file = File::open(img_path).unwrap();
-                let img = img2avif(file, Some(5), Some(85)).unwrap();
+                let img = img2avif(file, Some(args.speed), Some(args.quality)).unwrap();
 
                 let output_path = output_dir.join(format!("{}.avif", uuid::Uuid::new_v4()));
                 std::fs::write(output_path, img).unwrap();
+
                 // 保存哈希值
                 let hash_file_path = output_dir.join("hashes");
-                std::fs::write(hash_file_path, format!("{}\n", hash)).unwrap();
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(hash_file_path)
+                    .unwrap();
+                writeln!(file, "{}", hash).unwrap();
                 pb.inc(1);
             }
             None => {
@@ -109,6 +122,7 @@ fn compare_hash<P: AsRef<Path>>(img_path: P, output_dir: P) -> Option<String> {
     }
 
     for hash in hash_vec {
+        println!("{}", hash.dist(&origin_hash));
         if hash.dist(&origin_hash) < 10 {
             return None;
         }
