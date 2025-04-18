@@ -70,10 +70,7 @@ fn main() {
                 let img = img2avif(file, Some(args.speed), Some(args.quality))
                     .expect("Failed to convert image");
 
-                let output_path = output_dir.join(format!(
-                    "{}.avif",
-                    uuid::Uuid::new_v7(Timestamp::now(uuid::NoContext))
-                ));
+                let output_path = output_dir.join(format!("{}.avif", uuid::Uuid::now_v7()));
                 std::fs::write(output_path, img).unwrap();
 
                 // 保存哈希值
