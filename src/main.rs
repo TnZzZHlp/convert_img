@@ -4,7 +4,7 @@ use img2avif::img2avif;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use rayon::prelude::*;
 use std::io::Write;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use std::{
     fmt,
     fs::{File, read_dir},
@@ -39,6 +39,15 @@ static HASHES: OnceLock<RwLock<Vec<ImageHash>>> = OnceLock::new();
 fn main() {
     let args = Args::parse();
 
+    HASHER
+        .set(
+            HasherConfig::new()
+                .hash_alg(HashAlg::Blockhash)
+                .hash_size(64, 64)
+                .to_hasher(),
+        )
+        .unwrap_or_else(|_| panic!("Failed to create hasher"));
+
     if args.rebuild_hashes {
         rebuild_hashes(&args.output_dir);
         return;
@@ -50,15 +59,6 @@ fn main() {
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir).unwrap();
     }
-
-    HASHER
-        .set(
-            HasherConfig::new()
-                .hash_alg(HashAlg::Blockhash)
-                .hash_size(64, 64)
-                .to_hasher(),
-        )
-        .unwrap_or_else(|_| panic!("Failed to create hasher"));
 
     HASHES
         .set(init_hashes(&args.output_dir))
@@ -184,10 +184,26 @@ fn init_pb(len: usize) -> ProgressBar {
 
 fn rebuild_hashes(output_dir: &str) {
     let hash_file_path = Path::new(output_dir).join("hashes");
-    let files = read_dir(output_dir).unwrap();
-    let mut hashes = Vec::new();
+    let files = read_dir(output_dir).expect("Failed to read directory");
 
-    for file in files.flatten() {
+    let hashes = Mutex::new(Vec::new());
+
+    let file_vec: Vec<_> = files.flatten().collect();
+
+    let pb = ProgressBar::new(file_vec.len() as u64);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg}",
+        )
+        .unwrap()
+        .with_key("eta", |state: &ProgressState, w: &mut dyn fmt::Write| {
+            write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
+        })
+        .progress_chars("#>-"),
+    );
+    pb.enable_steady_tick(Duration::from_millis(100));
+
+    file_vec.par_iter().for_each(|file| {
         let path = file.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "avif") {
             let img = image::ImageReader::open(path)
@@ -198,9 +214,10 @@ fn rebuild_hashes(output_dir: &str) {
                 .unwrap();
             let hasher = HASHER.get().unwrap();
             let hash = hasher.hash_image(&img);
-            hashes.push(hash);
+            hashes.lock().unwrap().push(hash.clone());
+            pb.inc(1);
         }
-    }
+    });
 
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -208,7 +225,7 @@ fn rebuild_hashes(output_dir: &str) {
         .truncate(true)
         .open(&hash_file_path)
         .unwrap();
-    for hash in hashes.iter() {
+    for hash in hashes.lock().unwrap().iter() {
         writeln!(file, "{}", hash.to_base64()).unwrap();
     }
 
