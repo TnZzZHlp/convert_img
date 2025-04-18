@@ -64,6 +64,15 @@ fn main() {
         .set(init_hashes(&args.output_dir))
         .unwrap_or_else(|_| panic!("Failed to create hashes"));
 
+    let hash_file_path = output_dir.join("hashes");
+    let hashes_file = Mutex::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(hash_file_path)
+            .unwrap(),
+    );
+
     // 进度条
     let pb = init_pb(images.len());
     images.par_iter().for_each(|img_path| {
@@ -72,6 +81,7 @@ fn main() {
         // 找到相同的图片
         match compare_hash(img_path) {
             Ok(Some(hash)) => {
+                pb.println(format!("Processing image: {}", img_path.display()));
                 // 转换图片格式
                 let file = File::open(img_path).unwrap();
                 let img = if let Ok(img) = img2avif(file, Some(args.speed), Some(args.quality)) {
@@ -86,13 +96,7 @@ fn main() {
                 std::fs::write(output_path, img).unwrap();
 
                 // 保存哈希值
-                let hash_file_path = output_dir.join("hashes");
-                let mut file = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(hash_file_path)
-                    .unwrap();
-                writeln!(file, "{}", hash.to_base64()).unwrap();
+                writeln!(hashes_file.lock().unwrap(), "{}", hash.to_base64()).unwrap();
                 HASHES.get().unwrap().write().unwrap().push(hash);
                 pb.inc(1);
             }
@@ -143,6 +147,7 @@ fn compare_hash<P: AsRef<Path>>(
     let hashes = HASHES.get().unwrap().read().unwrap();
 
     for hash in hashes.iter() {
+        println!("Comparing hash: {}", hash.dist(&origin_hash));
         if hash.dist(&origin_hash) < 10 {
             return Ok(None);
         }
