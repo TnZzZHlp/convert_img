@@ -12,7 +12,6 @@ use std::{
     sync::OnceLock,
     time::Duration,
 };
-use uuid::Timestamp;
 
 #[derive(Parser)]
 struct Args {
