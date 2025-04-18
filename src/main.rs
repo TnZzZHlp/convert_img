@@ -87,8 +87,7 @@ fn main() {
                 pb.println(format!("Image {} error: {:?}", img_path.display(), e));
                 pb.inc(1);
             }
-            Ok(None) => {
-                pb.println(format!("Image {} already exists", img_path.display()));
+            _ => {
                 pb.inc(1);
             }
         }
