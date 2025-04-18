@@ -16,7 +16,7 @@ use std::{
 #[derive(Parser)]
 struct Args {
     #[clap(short, long)]
-    source_dir: String,
+    source_dir: Option<String>,
 
     #[clap(short, long, default_value = "./output")]
     output_dir: String,
@@ -26,6 +26,9 @@ struct Args {
 
     #[clap(short, long, default_value = "85")]
     quality: u8,
+
+    #[clap(short, long, default_value = "false")]
+    rebuild_hashes: bool,
 }
 
 static IMAGE_FORMATS: [&str; 3] = ["jpg", "png", "jpeg"];
@@ -35,15 +38,18 @@ static HASHES: OnceLock<RwLock<Vec<ImageHash>>> = OnceLock::new();
 
 fn main() {
     let args = Args::parse();
-    let images = find_all_img_recusive(&args.source_dir);
+
+    if args.rebuild_hashes {
+        rebuild_hashes(&args.output_dir);
+        return;
+    }
+
+    let images = find_all_img_recusive(args.source_dir.expect("Please provide a source directory"));
 
     let output_dir = Path::new(&args.output_dir);
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir).unwrap();
     }
-
-    // 进度条
-    let pb = init_pb(images.len());
 
     HASHER
         .set(
@@ -58,6 +64,8 @@ fn main() {
         .set(init_hashes(&args.output_dir))
         .unwrap_or_else(|_| panic!("Failed to create hashes"));
 
+    // 进度条
+    let pb = init_pb(images.len());
     images.par_iter().for_each(|img_path| {
         let img_path = Path::new(img_path);
 
@@ -66,8 +74,13 @@ fn main() {
             Ok(Some(hash)) => {
                 // 转换图片格式
                 let file = File::open(img_path).unwrap();
-                let img = img2avif(file, Some(args.speed), Some(args.quality))
-                    .expect("Failed to convert image");
+                let img = if let Ok(img) = img2avif(file, Some(args.speed), Some(args.quality)) {
+                    img
+                } else {
+                    pb.println(format!("Image {} conversion failed", img_path.display()));
+                    pb.inc(1);
+                    return;
+                };
 
                 let output_path = output_dir.join(format!("{}.avif", uuid::Uuid::now_v7()));
                 std::fs::write(output_path, img).unwrap();
@@ -103,10 +116,10 @@ fn find_all_img_recusive<P: AsRef<Path>>(path: P) -> Vec<String> {
             let path = entry.path();
             if path.is_dir() {
                 images.extend(find_all_img_recusive(path));
-            } else if IMAGE_FORMATS
-                .iter()
-                .any(|&ext| path.extension().is_some_and(|e| e == ext))
-            {
+            } else if IMAGE_FORMATS.iter().any(|&ext| {
+                path.extension()
+                    .is_some_and(|e| e.to_ascii_lowercase() == ext)
+            }) {
                 if let Some(path_str) = path.to_str() {
                     images.push(path_str.to_string());
                 }
@@ -167,4 +180,40 @@ fn init_pb(len: usize) -> ProgressBar {
     );
     pb.enable_steady_tick(Duration::from_millis(100));
     pb
+}
+
+fn rebuild_hashes(output_dir: &str) {
+    let hash_file_path = Path::new(output_dir).join("hashes");
+    let files = read_dir(output_dir).unwrap();
+    let mut hashes = Vec::new();
+
+    for file in files.flatten() {
+        let path = file.path();
+        if path.is_file() && path.extension().is_some_and(|e| e == "avif") {
+            let img = image::ImageReader::open(path)
+                .unwrap()
+                .with_guessed_format()
+                .unwrap()
+                .decode()
+                .unwrap();
+            let hasher = HASHER.get().unwrap();
+            let hash = hasher.hash_image(&img);
+            hashes.push(hash);
+        }
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&hash_file_path)
+        .unwrap();
+    for hash in hashes.iter() {
+        writeln!(file, "{}", hash.to_base64()).unwrap();
+    }
+
+    println!(
+        "Hashes have been rebuilt and saved to {}",
+        hash_file_path.display()
+    );
 }
