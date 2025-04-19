@@ -197,7 +197,7 @@ fn rebuild_hashes(output_dir: &str) {
     let pb = ProgressBar::new(file_vec.len() as u64);
     pb.set_style(
         ProgressStyle::with_template(
-            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg}",
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg}",
         )
         .unwrap()
         .with_key("eta", |state: &ProgressState, w: &mut dyn fmt::Write| {
