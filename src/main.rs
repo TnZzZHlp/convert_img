@@ -42,7 +42,7 @@ fn main() {
     HASHER
         .set(
             HasherConfig::new()
-                .hash_alg(HashAlg::Blockhash)
+                .hash_alg(HashAlg::DoubleGradient)
                 .hash_size(64, 64)
                 .to_hasher(),
         )
@@ -147,7 +147,6 @@ fn compare_hash<P: AsRef<Path>>(
     let hashes = HASHES.get().unwrap().read().unwrap();
 
     for hash in hashes.iter() {
-        println!("Comparing hash: {}", hash.dist(&origin_hash));
         if hash.dist(&origin_hash) < 10 {
             return Ok(None);
         }
