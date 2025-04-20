@@ -29,6 +29,9 @@ struct Args {
 
     #[clap(short, long, default_value = "false")]
     rebuild_hashes: bool,
+
+    #[clap(short, long, default_value = "8")]
+    threads: usize,
 }
 
 static IMAGE_FORMATS: [&str; 3] = ["jpg", "png", "jpeg"];
@@ -38,6 +41,11 @@ static HASHES: OnceLock<RwLock<Vec<ImageHash>>> = OnceLock::new();
 
 fn main() {
     let args = Args::parse();
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(args.threads)
+        .build_global()
+        .unwrap();
 
     HASHER
         .set(
@@ -137,7 +145,7 @@ fn find_all_img_recusive<P: AsRef<Path>>(path: P) -> Vec<String> {
 fn compare_hash<P: AsRef<Path>>(
     img_path: P,
 ) -> Result<Option<ImageHash>, image::error::ImageError> {
-    let img = image::ImageReader::open(img_path)?
+    let img = image::ImageReader::open(&img_path)?
         .with_guessed_format()?
         .decode()?;
     let hasher = HASHER.get().unwrap();
@@ -161,7 +169,7 @@ fn init_hashes(output_dir: &str) -> RwLock<Vec<ImageHash>> {
     let hash_file_path = Path::new(output_dir).join("hashes");
     if hash_file_path.exists() {
         let file = std::fs::read_to_string(hash_file_path).unwrap();
-        for line in file.lines() {
+        for line in file.lines().filter(|l| !l.is_empty()) {
             if let Ok(hash) = ImageHash::from_base64(line) {
                 hashes.write().unwrap().push(hash);
             }
