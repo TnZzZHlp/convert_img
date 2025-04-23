@@ -113,6 +113,7 @@ fn main() {
                 pb.inc(1);
             }
             _ => {
+                pb.println(format!("Image {} already exists", img_path.display()));
                 pb.inc(1);
             }
         }
