@@ -159,7 +159,7 @@ fn compare_hash<P: AsRef<Path>>(
     let hashes = HASHES.get().unwrap().read().unwrap();
 
     for hash in hashes.iter() {
-        if hash.dist(&origin_hash) < 10 {
+        if ((4096 - hash.dist(&origin_hash)) as f32 / 4096.0) > 0.9 {
             return Ok(None);
         }
     }
