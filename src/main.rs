@@ -18,6 +18,9 @@ struct Args {
     #[clap(short, long)]
     source_dir: Option<String>,
 
+    #[clap(short, long, default_value = "./hashes")]
+    hashes_file_path: String,
+
     #[clap(short, long, default_value = "./output")]
     output_dir: String,
 
@@ -69,10 +72,10 @@ fn main() {
     }
 
     HASHES
-        .set(init_hashes(&args.output_dir))
+        .set(init_hashes(&args.hashes_file_path))
         .unwrap_or_else(|_| panic!("Failed to create hashes"));
 
-    let hash_file_path = output_dir.join("hashes");
+    let hash_file_path = Path::new(&args.hashes_file_path);
     let hashes_file = Mutex::new(
         std::fs::OpenOptions::new()
             .create(true)
@@ -165,9 +168,9 @@ fn compare_hash<P: AsRef<Path>>(
 }
 
 // 初始化HASHES
-fn init_hashes(output_dir: &str) -> RwLock<Vec<ImageHash>> {
+fn init_hashes(hashes_file_path: &str) -> RwLock<Vec<ImageHash>> {
     let hashes = RwLock::new(Vec::new());
-    let hash_file_path = Path::new(output_dir).join("hashes");
+    let hash_file_path = Path::new(hashes_file_path);
     if hash_file_path.exists() {
         let file = std::fs::read_to_string(hash_file_path).unwrap();
         for line in file.lines().filter(|l| !l.is_empty()) {
