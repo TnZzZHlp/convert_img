@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use std::io::Write;
 use std::sync::{Mutex, RwLock};
 use std::{
+    collections::HashSet,
     fmt,
     fs::{File, read_dir},
     path::Path,
@@ -40,7 +41,7 @@ struct Args {
 static IMAGE_FORMATS: [&str; 3] = ["jpg", "png", "jpeg"];
 
 static HASHER: OnceLock<Hasher> = OnceLock::new();
-static HASHES: OnceLock<RwLock<Vec<ImageHash>>> = OnceLock::new();
+static HASHES: OnceLock<RwLock<HashSet<ImageHash>>> = OnceLock::new();
 
 fn main() {
     let args = Args::parse();
@@ -108,7 +109,7 @@ fn main() {
 
                 // 保存哈希值
                 writeln!(hashes_file.lock().unwrap(), "{}", hash.to_base64()).unwrap();
-                HASHES.get().unwrap().write().unwrap().push(hash);
+                HASHES.get().unwrap().write().unwrap().insert(hash);
                 pb.inc(1);
             }
             Err(e) => {
@@ -168,14 +169,14 @@ fn compare_hash<P: AsRef<Path>>(
 }
 
 // 初始化HASHES
-fn init_hashes(hashes_file_path: &str) -> RwLock<Vec<ImageHash>> {
-    let hashes = RwLock::new(Vec::new());
+fn init_hashes(hashes_file_path: &str) -> RwLock<HashSet<ImageHash>> {
+    let hashes = RwLock::new(HashSet::new());
     let hash_file_path = Path::new(hashes_file_path);
     if hash_file_path.exists() {
         let file = std::fs::read_to_string(hash_file_path).unwrap();
         for line in file.lines().filter(|l| !l.is_empty()) {
             if let Ok(hash) = ImageHash::from_base64(line) {
-                hashes.write().unwrap().push(hash);
+                hashes.write().unwrap().insert(hash);
             }
         }
     }
